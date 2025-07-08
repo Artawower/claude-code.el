@@ -1706,15 +1706,21 @@ With prefix ARG, switch to the Claude buffer after sending."
                             (file-relative-name file-name project-root)
                           file-name)))
     (if relative-path
-        (let ((command (format "@%s " relative-path)))
-          (if-let ((claude-code-buffer (claude-code--get-or-prompt-for-buffer)))
-              (progn
-                (with-current-buffer claude-code-buffer
-                  (claude-code--term-send-string claude-code-terminal-backend command)
-                  (display-buffer claude-code-buffer))
-                (when arg
-                  (pop-to-buffer claude-code-buffer)))
-            (claude-code--show-not-running-message)))
+        (if-let ((claude-code-buffer (claude-code--get-or-prompt-for-buffer)))
+            (progn
+              (with-current-buffer claude-code-buffer
+                ;; Check if current input line ends with space
+                (let* ((current-line (buffer-substring-no-properties 
+                                       (line-beginning-position) (point)))
+                       (needs-prefix-space (not (string-match-p "\\s-$" current-line)))
+                       (command (if needs-prefix-space
+                                    (format " @%s " relative-path)
+                                  (format "@%s " relative-path))))
+                  (claude-code--term-send-string claude-code-terminal-backend command))
+                (display-buffer claude-code-buffer))
+              (when arg
+                (pop-to-buffer claude-code-buffer)))
+          (claude-code--show-not-running-message))
       (message "No file associated with current buffer"))))
 
 ;;;###autoload
@@ -1735,15 +1741,21 @@ With prefix ARG, switch to the Claude buffer after sending."
                             (file-relative-name file-path project-root)
                           file-path)))
     (when file-path
-      (let ((command (format "@%s " relative-path)))
-        (if-let ((claude-code-buffer (claude-code--get-or-prompt-for-buffer)))
-            (progn
-              (with-current-buffer claude-code-buffer
-                (claude-code--term-send-string claude-code-terminal-backend command)
-                (display-buffer claude-code-buffer))
-              (when arg
-                (pop-to-buffer claude-code-buffer)))
-          (claude-code--show-not-running-message))))))
+      (if-let ((claude-code-buffer (claude-code--get-or-prompt-for-buffer)))
+          (progn
+            (with-current-buffer claude-code-buffer
+              ;; Check if current input line ends with space
+              (let* ((current-line (buffer-substring-no-properties 
+                                     (line-beginning-position) (point)))
+                     (needs-prefix-space (not (string-match-p "\\s-$" current-line)))
+                     (command (if needs-prefix-space
+                                  (format " @%s " relative-path)
+                                (format "@%s " relative-path))))
+                (claude-code--term-send-string claude-code-terminal-backend command))
+              (display-buffer claude-code-buffer))
+            (when arg
+              (pop-to-buffer claude-code-buffer)))
+        (claude-code--show-not-running-message)))))
 
 ;;;###autoload
 (defun claude-code-read-only-mode ()
