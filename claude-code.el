@@ -299,6 +299,8 @@ for each directory across multiple invocations.")
     (define-key map (kbd "f") 'claude-code-fork)
     (define-key map (kbd "r") 'claude-code-send-region)
     (define-key map (kbd "s") 'claude-code-send-command)
+    (define-key map (kbd "F") 'claude-code-send-current-file)
+    (define-key map (kbd "S") 'claude-code-send-file)
     (define-key map (kbd "t") 'claude-code-toggle)
     (define-key map (kbd "x") 'claude-code-send-command-with-context)
     (define-key map (kbd "y") 'claude-code-send-return)
@@ -328,6 +330,8 @@ for each directory across multiple invocations.")
     ("s" "Send command" claude-code-send-command)
     ("x" "Send command with context" claude-code-send-command-with-context)
     ("r" "Send region or buffer" claude-code-send-region)
+    ("F" "Send current file" claude-code-send-current-file)
+    ("S" "Send file" claude-code-send-file)
     ("e" "Fix error at point" claude-code-fix-error-at-point)
     ("f" "Fork conversation" claude-code-fork)
     ("/" "Slash Commands" claude-code-slash-commands)]
@@ -1684,6 +1688,62 @@ With prefix ARG, switch to the Claude buffer after sending."
         (let ((selected-buffer (claude-code--do-send-command command)))
           (when (and arg selected-buffer)
             (pop-to-buffer selected-buffer)))))))
+
+;;;###autoload
+(defun claude-code-send-current-file (&optional arg)
+  "Send the current file path to Claude with @ prefix.
+
+Gets the current file path relative to the project root (or absolute if
+no project) and sends it to Claude with @ prefix for file operations.
+Places the file path in Claude's input without sending.
+
+With prefix ARG, switch to the Claude buffer after sending."
+  (interactive "P")
+  (let* ((file-name (claude-code--get-buffer-file-name))
+         (project-root (when (project-current)
+                         (project-root (project-current))))
+         (relative-path (if (and file-name project-root)
+                            (file-relative-name file-name project-root)
+                          file-name)))
+    (if relative-path
+        (let ((command (format "@%s " relative-path)))
+          (if-let ((claude-code-buffer (claude-code--get-or-prompt-for-buffer)))
+              (progn
+                (with-current-buffer claude-code-buffer
+                  (claude-code--term-send-string claude-code-terminal-backend command)
+                  (display-buffer claude-code-buffer))
+                (when arg
+                  (pop-to-buffer claude-code-buffer)))
+            (claude-code--show-not-running-message)))
+      (message "No file associated with current buffer"))))
+
+;;;###autoload
+(defun claude-code-send-file (&optional arg)
+  "Prompt for a file and send its path to Claude with @ prefix.
+
+Uses completion to select a file from the project or current directory,
+then sends it to Claude with @ prefix for file operations.
+Places the file path in Claude's input without sending.
+
+With prefix ARG, switch to the Claude buffer after sending."
+  (interactive "P")
+  (let* ((project-root (when (project-current)
+                         (project-root (project-current))))
+         (default-directory (or project-root default-directory))
+         (file-path (read-file-name "Send file to Claude: " default-directory))
+         (relative-path (if project-root
+                            (file-relative-name file-path project-root)
+                          file-path)))
+    (when file-path
+      (let ((command (format "@%s " relative-path)))
+        (if-let ((claude-code-buffer (claude-code--get-or-prompt-for-buffer)))
+            (progn
+              (with-current-buffer claude-code-buffer
+                (claude-code--term-send-string claude-code-terminal-backend command)
+                (display-buffer claude-code-buffer))
+              (when arg
+                (pop-to-buffer claude-code-buffer)))
+          (claude-code--show-not-running-message))))))
 
 ;;;###autoload
 (defun claude-code-read-only-mode ()
