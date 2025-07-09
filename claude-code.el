@@ -121,7 +121,7 @@ When nil, Claude instances will be killed without confirmation."
   "Whether to optimize terminal window resizing to prevent unnecessary reflows.
 
 When non-nil, terminal reflows are only triggered when the window width
-changes, not when only the height changes. This prevents unnecessary
+changes, not when only the height changes.  This prevents unnecessary
 terminal redraws when windows are split or resized vertically, improving
 performance and reducing visual artifacts.
 
@@ -256,7 +256,7 @@ outputs."
 
 When non-nil, vterm output that appears to be redrawing multi-line
 input boxes will be buffered briefly (1ms) and processed in a single
-batch. This prevents the flickering that can occur when Claude redraws
+batch.  This prevents the flickering that can occur when Claude redraws
 its input box as it expands to multiple lines.
 
 This only affects the vterm backend."
@@ -656,12 +656,12 @@ SWITCHES are optional command-line arguments for PROGRAM."
     (with-current-buffer buffer
       ;; vterm needs to have an open window before starting the claude
       ;; process; otherwise Claude doesn't seem to know how wide its
-      ;; terminal window is and it draws the input box too wide. But
-      ;; the user may not want to pop to the buffer. For some reason
+      ;; terminal window is and it draws the input box too wide.  But
+      ;; the user may not want to pop to the buffer.  For some reason
       ;; `display-buffer' also leads to wonky results, it has to be
-      ;; `pop-to-buffer'. So, show the buffer, start vterm-mode (which
+      ;; `pop-to-buffer'.  So, show the buffer, start vterm-mode (which
       ;; starts the vterm-shell claude process), and then hide the
-      ;; buffer. We'll optionally re-open it later.
+      ;; buffer.  We'll optionally re-open it later.
       ;; 
       ;; [TODO] see if there's a cleaner way to do this.
       (pop-to-buffer buffer)
@@ -733,7 +733,7 @@ _BACKEND is the terminal backend type (should be \\='vterm)."
   ;; Set timer delay to nil for faster updates (reduces visible flicker duration)
   ;; (setq-local vterm-timer-delay nil)
   ;; Increase process read buffering to batch more updates together
-  (when-let ((proc (get-buffer-process (current-buffer))))
+  (when-let* ((proc (get-buffer-process (current-buffer))))
     (set-process-query-on-exit-flag proc nil)
     ;; Try to make vterm read larger chunks at once
     (process-put proc 'read-output-max 4096))
@@ -823,7 +823,7 @@ _BACKEND is the terminal backend type (should be \\='vterm)."
 Gets or prompts for the Claude buffer, executes BODY within that buffer's
 context, displays the buffer, and shows not-running message if no buffer
 is found."
-  `(if-let ((claude-code-buffer (claude-code--get-or-prompt-for-buffer)))
+  `(if-let* ((claude-code-buffer (claude-code--get-or-prompt-for-buffer)))
        (with-current-buffer claude-code-buffer
          ,@body
          (display-buffer claude-code-buffer))
@@ -933,7 +933,7 @@ Returns the selected buffer or nil."
 (defun claude-code--prompt-for-claude-buffer ()
   "Prompt user to select from available Claude buffers.
 
-Returns the selected buffer or nil if canceled. If a buffer is selected,
+Returns the selected buffer or nil if canceled.  If a buffer is selected,
 it's remembered for the current directory."
   (let* ((current-dir (claude-code--directory))
          (claude-buffers (claude-code--find-all-claude-buffers)))
@@ -950,10 +950,10 @@ it's remembered for the current directory."
 (defun claude-code--get-or-prompt-for-buffer ()
   "Get Claude buffer for current directory or prompt for selection.
 
-First checks for Claude buffers in the current directory. If there are
-multiple, prompts the user to select one. If there are none, checks if
-there's a remembered selection for this directory. If not, and there are
-other Claude buffers running, prompts the user to select one. Returns
+First checks for Claude buffers in the current directory.  If there are
+multiple, prompts the user to select one.  If there are none, checks if
+there's a remembered selection for this directory.  If not, and there are
+other Claude buffers running, prompts the user to select one.  Returns
 the buffer or nil."
   (let* ((current-dir (claude-code--directory))
          (dir-buffers (claude-code--find-claude-buffers-for-directory current-dir)))
@@ -1018,10 +1018,10 @@ If FORCE-PROMPT is non-nil, always prompt even if no instances exist."
                              nil nil proposed-name))
           (cond
            ((string-empty-p proposed-name)
-            (message "Instance name cannot be empty. Please enter a name.")
+            (message "Instance name cannot be empty.  Please enter a name.")
             (sit-for 1))
            ((member proposed-name existing-instance-names)
-            (message "Instance name '%s' already exists. Please choose a different name." proposed-name)
+            (message "Instance name '%s' already exists.  Please choose a different name." proposed-name)
             (sit-for 1))))
         proposed-name)
     "default"))
@@ -1068,7 +1068,7 @@ the remembered directory->buffer associations."
 
 After sending the command, move point to the end of the buffer.
 Returns the selected Claude buffer or nil."
-  (if-let ((claude-code-buffer (claude-code--get-or-prompt-for-buffer)))
+  (if-let* ((claude-code-buffer (claude-code--get-or-prompt-for-buffer)))
       (progn
         (with-current-buffer claude-code-buffer
           (claude-code--term-send-string claude-code-terminal-backend cmd)
@@ -1226,11 +1226,11 @@ With double prefix ARG (\\[universal-argument] \\[universal-argument]), prompt f
   "Resume a specific Claude session.
 
 This command starts Claude with the --resume flag to resume a specific
-past session. Claude will present an interactive list of past sessions
+past session.  Claude will present an interactive list of past sessions
 to choose from.
 
 If current buffer belongs to a project start Claude in the project's
-root directory. Otherwise start in the directory of the current buffer
+root directory.  Otherwise start in the directory of the current buffer
 file, or the current value of `default-directory' if no project and no
  buffer file.
 
@@ -1433,7 +1433,7 @@ ARGS is passed to ORIG-FUN unchanged."
                 ;; Update stored width
                 (puthash window current-width claude-code--window-widths))))))
       ;; Return result only if a Claude window width changed and
-      ;; we're not in read-only mode. otherwise nil. Nil means do
+      ;; we're not in read-only mode.  otherwise nil.  Nil means do
       ;; not send a window size changed event to the Claude process.
       (if (and width-changed (not (claude-code--term-in-read-only-p claude-code-terminal-backend)))
           result
@@ -1517,7 +1517,7 @@ With prefix ARG, show all Claude instances across all directories."
       ;; With prefix arg, show all Claude instances
       (claude-code--switch-to-all-instances-helper)
     ;; Without prefix arg, use normal behavior
-    (if-let ((claude-code-buffer (claude-code--get-or-prompt-for-buffer)))
+    (if-let* ((claude-code-buffer (claude-code--get-or-prompt-for-buffer)))
         (pop-to-buffer claude-code-buffer)
       (claude-code--show-not-running-message))))
 
@@ -1550,7 +1550,7 @@ directories, allowing you to choose which one to switch to."
 (defun claude-code-kill ()
   "Kill Claude process and close its window."
   (interactive)
-  (if-let ((claude-code-buffer (claude-code--get-or-prompt-for-buffer)))
+  (if-let* ((claude-code-buffer (claude-code--get-or-prompt-for-buffer)))
       (if claude-code-confirm-kill
           (when (yes-or-no-p "Kill Claude instance? ")
             (claude-code--kill-buffer claude-code-buffer)
@@ -1671,7 +1671,7 @@ Claude uses Shift-Tab to cycle through:
 
 Sends <escape><escape> to the Claude Code REPL."
   (interactive)
-  (if-let ((claude-code-buffer (claude-code--get-or-prompt-for-buffer)))
+  (if-let* ((claude-code-buffer (claude-code--get-or-prompt-for-buffer)))
       (with-current-buffer claude-code-buffer
         (claude-code--term-send-string claude-code-terminal-backend "")
         ;; (display-buffer claude-code-buffer)
@@ -1683,7 +1683,7 @@ Sends <escape><escape> to the Claude Code REPL."
   "Ask Claude to fix the error at point.
 
 Gets the error message, file name, and line number, and instructs Claude
-to fix the error. Supports both flycheck and flymake error systems, as well
+to fix the error.  Supports both flycheck and flymake error systems, as well
 as any system that implements help-at-pt.
 
 With prefix ARG, switch to the Claude buffer after sending."
@@ -1721,27 +1721,26 @@ With prefix ARG, switch to the Claude buffer after sending."
               (with-current-buffer prompt-buffer
                 (goto-char (point-max))
                 (when (and (> (point) (point-min))
-              (with-current-buffer prompt-buffer
-                  (insert " "))
-                (insert (format "@%s " relative-path)))
                            (not (bolp)))
+                  (insert " "))
+                (insert (format "@%s " relative-path))))
           ;; Send to Claude buffer
-          (if-let ((claude-code-buffer (claude-code--get-or-prompt-for-buffer)))
+          (if-let* ((claude-code-buffer (claude-code--get-or-prompt-for-buffer)))
               (progn
                 (with-current-buffer claude-code-buffer
                   ;; Check if current input line ends with space
-                  (let* ((current-line (buffer-substring-no-properties 
-                (with-current-buffer claude-code-buffer
+                  (let* ((current-line (buffer-substring-no-properties
+                                        (line-beginning-position) (point)))
                          (needs-prefix-space (not (string-match-p "\\s-$" current-line)))
                          (command (if needs-prefix-space
-                                        (line-beginning-position) (point)))
+                                      (format " @%s " relative-path)
                                     (format "@%s " relative-path))))
                     (claude-code--term-send-string claude-code-terminal-backend command))
                   (display-buffer claude-code-buffer))
                 (when arg
                   (pop-to-buffer claude-code-buffer)))
             (claude-code--show-not-running-message)))
-      (message "No file associated with current buffer")))))))
+      (message "No file associated with current buffer"))))
 
 ;;;###autoload
 (defun claude-code-send-file (&optional arg)
@@ -1767,34 +1766,33 @@ With prefix ARG, switch to the Claude buffer after sending."
             (with-current-buffer prompt-buffer
               (goto-char (point-max))
               (when (and (> (point) (point-min))
-            (with-current-buffer prompt-buffer
-                (insert " "))
-              (insert (format "@%s " relative-path)))
                          (not (bolp)))
+                (insert " "))
+              (insert (format "@%s " relative-path))))
         ;; Send to Claude buffer
-        (if-let ((claude-code-buffer (claude-code--get-or-prompt-for-buffer)))
+        (if-let* ((claude-code-buffer (claude-code--get-or-prompt-for-buffer)))
             (progn
               (with-current-buffer claude-code-buffer
                 ;; Check if current input line ends with space
-                (let* ((current-line (buffer-substring-no-properties 
-              (with-current-buffer claude-code-buffer
+                (let* ((current-line (buffer-substring-no-properties
+                                      (line-beginning-position) (point)))
                        (needs-prefix-space (not (string-match-p "\\s-$" current-line)))
                        (command (if needs-prefix-space
-                                      (line-beginning-position) (point)))
+                                    (format " @%s " relative-path)
                                   (format "@%s " relative-path))))
                   (claude-code--term-send-string claude-code-terminal-backend command))
                 (display-buffer claude-code-buffer))
               (when arg
                 (pop-to-buffer claude-code-buffer)))
-          (claude-code--show-not-running-message)))))))))
+          (claude-code--show-not-running-message))))))
 
 ;;;###autoload
 (defun claude-code-read-only-mode ()
   "Enter read-only mode in Claude buffer with visible cursor.
 
 In this mode, you can interact with the terminal buffer just like a
-regular buffer. This mode is useful for selecting text in the Claude
-buffer. However, you are not allowed to change the buffer contents or
+regular buffer.  This mode is useful for selecting text in the Claude
+buffer.  However, you are not allowed to change the buffer contents or
 enter Claude commands.
 
 Use `claude-code-exit-read-only-mode' to switch back to normal mode."
@@ -1816,8 +1814,8 @@ Use `claude-code-exit-read-only-mode' to switch back to normal mode."
   "Toggle between read-only mode and normal mode.
 
 In read-only mode you can interact with the terminal buffer just like a
-regular buffer. This mode is useful for selecting text in the Claude
-buffer. However, you are not allowed to change the buffer contents or
+regular buffer.  This mode is useful for selecting text in the Claude
+buffer.  However, you are not allowed to change the buffer contents or
 enter Claude commands."
   (interactive)
   (claude-code--with-buffer
@@ -1827,8 +1825,9 @@ enter Claude commands."
 
 ;;;; Prompt buffer functionality
 (defun claude-code--prompt-buffer-name ()
-  "Generate the prompt buffer name."
-  "*claude-prompt*")
+  "Generate the prompt buffer name based on current project directory."
+  (let ((dir (claude-code--directory)))
+    (format "*claude-prompt:%s*" (abbreviate-file-name (file-truename dir)))))
 
 (defun claude-code--get-prompt-buffer ()
   "Get or create the prompt buffer."
@@ -1850,7 +1849,7 @@ enter Claude commands."
   (let ((name (if (stringp buffer)
                   buffer
                 (buffer-name buffer))))
-    (and name (string= name (claude-code--prompt-buffer-name)))))
+    (and name (string-match-p "^\\*claude-prompt:" name))))
 
 (defun claude-code--prompt-buffer-empty-p ()
   "Return non-nil if the prompt buffer is empty."
@@ -1867,17 +1866,20 @@ enter Claude commands."
 (defun claude-code--close-prompt-buffer ()
   "Close the prompt buffer window if it exists."
   (let ((buffer (claude-code--get-prompt-buffer)))
-    (when-let ((window (get-buffer-window buffer)))
+    (when-let* ((window (get-buffer-window buffer)))
       (delete-window window))))
 
 ;;;; File insertion for prompt buffer
 (defun claude-code--insert-file-at-point ()
-  "Insert a file path at point using project-find-file."
+  "Insert a file path at point using `project-find-file' interface."
   (interactive)
-  (let ((project-root (when (project-current)
-                        (project-root (project-current)))))
-    (if project-root
-        (let ((file (read-file-name "Choose file: " project-root)))
+  (let ((project (project-current)))
+    (if project
+        ;; Use project completion table like project-find-file does
+        (let* ((project-root (project-root project))
+               (all-files (project-files project))
+               (completion-table (project--file-completion-table all-files))
+               (file (completing-read "Choose file: " completion-table nil t)))
           (when file
             (let ((relative-path (file-relative-name file project-root)))
               (insert relative-path))))
@@ -1902,9 +1904,9 @@ enter Claude commands."
   "Show the prompt buffer for composing Claude commands.
 
 The prompt buffer supports:
-- File insertion: Type @ to open project-find-file and insert selected file
+- File insertion: Type @ to open `project-find-file' and insert selected file
 - Literal @: Type \\@ to insert @ without file selection
-- Key bindings: C-c C-c to send, C-c C-k to close
+- Key bindings: \\[claude-code-send-prompt] to send, \\[claude-code--close-prompt-buffer] to close
 - Truncate lines enabled by default
 - Automatic Claude startup if not running"
   (interactive)
@@ -1921,23 +1923,23 @@ The prompt buffer supports:
 
 After sending, clear the prompt buffer, close it, and show the Claude buffer."
   (interactive)
-  ;; Start Claude if not running
-  (unless (claude-code--find-all-claude-buffers)
-    (claude-code))
-  (let ((buffer (claude-code--get-prompt-buffer)))
-    (if (claude-code--prompt-buffer-empty-p)
-        (message "Prompt buffer is empty")
-      (let ((content (with-current-buffer buffer
-                       (buffer-substring-no-properties (point-min) (point-max)))))
-        (claude-code--clear-prompt-buffer)
-        (claude-code--close-prompt-buffer)
-        (claude-code--do-send-command content)
-        ;; Show Claude buffer after sending
-        (run-with-timer 0.1 nil
-          (lambda ()
-            (let ((claude-buffers (claude-code--find-all-claude-buffers)))
-              (when claude-buffers
-                (pop-to-buffer (car claude-buffers))))))))))
+  ;; Get or create Claude buffer for current project
+  (if-let* ((claude-buffer (claude-code--get-or-prompt-for-buffer)))
+      (let ((buffer (claude-code--get-prompt-buffer)))
+        (if (claude-code--prompt-buffer-empty-p)
+            (message "Prompt buffer is empty")
+          (let ((content (with-current-buffer buffer
+                           (buffer-substring-no-properties (point-min) (point-max)))))
+            (claude-code--clear-prompt-buffer)
+            (claude-code--close-prompt-buffer)
+            ;; Send to the correct Claude buffer for this project
+            (with-current-buffer claude-buffer
+              (claude-code--term-send-string claude-code-terminal-backend content))
+            ;; Show Claude buffer after sending
+            (run-with-timer 0.1 nil
+              (lambda ()
+                (pop-to-buffer claude-buffer))))))
+    (message "Could not find or create Claude buffer for current project")))
 
 ;;;; Mode definition
 ;;;###autoload
