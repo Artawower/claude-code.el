@@ -279,6 +279,9 @@ for each directory across multiple invocations.")
 (defvar claude-code--window-widths nil
   "Hash table mapping windows to their last known widths for eat terminals.")
 
+(defvar claude-code--prompt-buffer nil
+  "Buffer for composing prompts before sending to Claude.")
+
 ;;;; Key bindings
 ;;;###autoload (autoload 'claude-code-command-map "claude-code")
 (defvar claude-code-command-map
@@ -309,6 +312,8 @@ for each directory across multiple invocations.")
     (define-key map (kbd "2") 'claude-code-send-2)
     (define-key map (kbd "3") 'claude-code-send-3)
     (define-key map (kbd "M") 'claude-code-cycle-mode)
+    (define-key map (kbd "p") 'claude-code-show-prompt-buffer)
+    (define-key map (kbd "P") 'claude-code-send-prompt)
     map)
   "Keymap for Claude commands.")
 
@@ -348,6 +353,10 @@ for each directory across multiple invocations.")
     ("1" "Send \"1\"" claude-code-send-1)
     ("2" "Send \"2\"" claude-code-send-2)
     ("3" "Send \"3\"" claude-code-send-3)
+    ]
+   ["Prompt Buffer"
+    ("p" "Show prompt buffer" claude-code-show-prompt-buffer)
+    ("P" "Send prompt to Claude" claude-code-send-prompt)
     ]])
 
 ;;;###autoload (autoload 'claude-code-slash-commands "claude-code" nil t)
@@ -1695,7 +1704,7 @@ With prefix ARG, switch to the Claude buffer after sending."
 
 Gets the current file path relative to the project root (or absolute if
 no project) and sends it to Claude with @ prefix for file operations.
-Places the file path in Claude's input without sending.
+If prompt buffer is not empty, sends to prompt buffer instead.
 
 With prefix ARG, switch to the Claude buffer after sending."
   (interactive "P")
@@ -1706,22 +1715,33 @@ With prefix ARG, switch to the Claude buffer after sending."
                             (file-relative-name file-name project-root)
                           file-name)))
     (if relative-path
-        (if-let ((claude-code-buffer (claude-code--get-or-prompt-for-buffer)))
-            (progn
-              (with-current-buffer claude-code-buffer
-                ;; Check if current input line ends with space
-                (let* ((current-line (buffer-substring-no-properties 
-                                       (line-beginning-position) (point)))
-                       (needs-prefix-space (not (string-match-p "\\s-$" current-line)))
-                       (command (if needs-prefix-space
-                                    (format " @%s " relative-path)
-                                  (format "@%s " relative-path))))
-                  (claude-code--term-send-string claude-code-terminal-backend command))
-                (display-buffer claude-code-buffer))
-              (when arg
-                (pop-to-buffer claude-code-buffer)))
-          (claude-code--show-not-running-message))
-      (message "No file associated with current buffer"))))
+        (if (not (claude-code--prompt-buffer-empty-p))
+            ;; Send to prompt buffer
+            (let ((prompt-buffer (claude-code--get-prompt-buffer)))
+              (with-current-buffer prompt-buffer
+                (goto-char (point-max))
+                (when (and (> (point) (point-min))
+              (with-current-buffer prompt-buffer
+                  (insert " "))
+                (insert (format "@%s " relative-path)))
+                           (not (bolp)))
+          ;; Send to Claude buffer
+          (if-let ((claude-code-buffer (claude-code--get-or-prompt-for-buffer)))
+              (progn
+                (with-current-buffer claude-code-buffer
+                  ;; Check if current input line ends with space
+                  (let* ((current-line (buffer-substring-no-properties 
+                (with-current-buffer claude-code-buffer
+                         (needs-prefix-space (not (string-match-p "\\s-$" current-line)))
+                         (command (if needs-prefix-space
+                                        (line-beginning-position) (point)))
+                                    (format "@%s " relative-path))))
+                    (claude-code--term-send-string claude-code-terminal-backend command))
+                  (display-buffer claude-code-buffer))
+                (when arg
+                  (pop-to-buffer claude-code-buffer)))
+            (claude-code--show-not-running-message)))
+      (message "No file associated with current buffer")))))))
 
 ;;;###autoload
 (defun claude-code-send-file (&optional arg)
@@ -1729,7 +1749,7 @@ With prefix ARG, switch to the Claude buffer after sending."
 
 Uses completion to select a file from the project or current directory,
 then sends it to Claude with @ prefix for file operations.
-Places the file path in Claude's input without sending.
+If prompt buffer is not empty, sends to prompt buffer instead.
 
 With prefix ARG, switch to the Claude buffer after sending."
   (interactive "P")
@@ -1741,21 +1761,32 @@ With prefix ARG, switch to the Claude buffer after sending."
                             (file-relative-name file-path project-root)
                           file-path)))
     (when file-path
-      (if-let ((claude-code-buffer (claude-code--get-or-prompt-for-buffer)))
-          (progn
-            (with-current-buffer claude-code-buffer
-              ;; Check if current input line ends with space
-              (let* ((current-line (buffer-substring-no-properties 
-                                     (line-beginning-position) (point)))
-                     (needs-prefix-space (not (string-match-p "\\s-$" current-line)))
-                     (command (if needs-prefix-space
-                                  (format " @%s " relative-path)
-                                (format "@%s " relative-path))))
-                (claude-code--term-send-string claude-code-terminal-backend command))
-              (display-buffer claude-code-buffer))
-            (when arg
-              (pop-to-buffer claude-code-buffer)))
-        (claude-code--show-not-running-message)))))
+      (if (not (claude-code--prompt-buffer-empty-p))
+          ;; Send to prompt buffer
+          (let ((prompt-buffer (claude-code--get-prompt-buffer)))
+            (with-current-buffer prompt-buffer
+              (goto-char (point-max))
+              (when (and (> (point) (point-min))
+            (with-current-buffer prompt-buffer
+                (insert " "))
+              (insert (format "@%s " relative-path)))
+                         (not (bolp)))
+        ;; Send to Claude buffer
+        (if-let ((claude-code-buffer (claude-code--get-or-prompt-for-buffer)))
+            (progn
+              (with-current-buffer claude-code-buffer
+                ;; Check if current input line ends with space
+                (let* ((current-line (buffer-substring-no-properties 
+              (with-current-buffer claude-code-buffer
+                       (needs-prefix-space (not (string-match-p "\\s-$" current-line)))
+                       (command (if needs-prefix-space
+                                      (line-beginning-position) (point)))
+                                  (format "@%s " relative-path))))
+                  (claude-code--term-send-string claude-code-terminal-backend command))
+                (display-buffer claude-code-buffer))
+              (when arg
+                (pop-to-buffer claude-code-buffer)))
+          (claude-code--show-not-running-message)))))))))
 
 ;;;###autoload
 (defun claude-code-read-only-mode ()
@@ -1793,6 +1824,79 @@ enter Claude commands."
    (if (not (claude-code--term-in-read-only-p claude-code-terminal-backend))
        (claude-code-read-only-mode)
      (claude-code-exit-read-only-mode))))
+
+;;;; Prompt buffer functionality
+(defun claude-code--prompt-buffer-name ()
+  "Generate the prompt buffer name."
+  "*claude-prompt*")
+
+(defun claude-code--get-prompt-buffer ()
+  "Get or create the prompt buffer."
+  (let ((buffer-name (claude-code--prompt-buffer-name)))
+    (or (get-buffer buffer-name)
+        (with-current-buffer (get-buffer-create buffer-name)
+          (text-mode)
+          (setq claude-code--prompt-buffer (current-buffer))
+          (current-buffer)))))
+
+(defun claude-code--prompt-buffer-p (buffer)
+  "Return non-nil if BUFFER is a Claude prompt buffer."
+  (let ((name (if (stringp buffer)
+                  buffer
+                (buffer-name buffer))))
+    (and name (string= name (claude-code--prompt-buffer-name)))))
+
+(defun claude-code--prompt-buffer-empty-p ()
+  "Return non-nil if the prompt buffer is empty."
+  (let ((buffer (claude-code--get-prompt-buffer)))
+    (with-current-buffer buffer
+      (= (buffer-size) 0))))
+
+(defun claude-code--clear-prompt-buffer ()
+  "Clear the contents of the prompt buffer."
+  (let ((buffer (claude-code--get-prompt-buffer)))
+    (with-current-buffer buffer
+      (erase-buffer))))
+
+(defun claude-code--close-prompt-buffer ()
+  "Close the prompt buffer window if it exists."
+  (let ((buffer (claude-code--get-prompt-buffer)))
+    (when-let ((window (get-buffer-window buffer)))
+      (delete-window window))))
+
+;;;###autoload
+(defun claude-code-show-prompt-buffer ()
+  "Show the prompt buffer for composing Claude commands."
+  (interactive)
+  ;; Start Claude if not running
+  (unless (claude-code--find-all-claude-buffers)
+    (claude-code))
+  (let ((buffer (claude-code--get-prompt-buffer)))
+    (pop-to-buffer buffer '((display-buffer-below-selected)))))
+
+;;;###autoload
+(defun claude-code-send-prompt ()
+  "Send the contents of the prompt buffer to Claude.
+
+After sending, clear the prompt buffer, close it, and show the Claude buffer."
+  (interactive)
+  ;; Start Claude if not running
+  (unless (claude-code--find-all-claude-buffers)
+    (claude-code))
+  (let ((buffer (claude-code--get-prompt-buffer)))
+    (if (claude-code--prompt-buffer-empty-p)
+        (message "Prompt buffer is empty")
+      (let ((content (with-current-buffer buffer
+                       (buffer-substring-no-properties (point-min) (point-max)))))
+        (claude-code--clear-prompt-buffer)
+        (claude-code--close-prompt-buffer)
+        (claude-code--do-send-command content)
+        ;; Show Claude buffer after sending
+        (run-with-timer 0.1 nil
+          (lambda ()
+            (let ((claude-buffers (claude-code--find-all-claude-buffers)))
+              (when claude-buffers
+                (pop-to-buffer (car claude-buffers))))))))))
 
 ;;;; Mode definition
 ;;;###autoload
