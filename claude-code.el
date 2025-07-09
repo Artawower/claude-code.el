@@ -1836,6 +1836,12 @@ enter Claude commands."
     (or (get-buffer buffer-name)
         (with-current-buffer (get-buffer-create buffer-name)
           (text-mode)
+          ;; Enable truncate lines by default
+          (toggle-truncate-lines 1)
+          ;; Add convenient key bindings
+          (local-set-key (kbd "C-c C-c") 'claude-code-send-prompt)
+          (local-set-key (kbd "C-c C-k") 'claude-code--close-prompt-buffer)
+          (local-set-key (kbd "@") 'claude-code--handle-at-key)
           (setq claude-code--prompt-buffer (current-buffer))
           (current-buffer)))))
 
@@ -1864,15 +1870,50 @@ enter Claude commands."
     (when-let ((window (get-buffer-window buffer)))
       (delete-window window))))
 
+;;;; File insertion for prompt buffer
+(defun claude-code--insert-file-at-point ()
+  "Insert a file path at point using project-find-file."
+  (interactive)
+  (let ((project-root (when (project-current)
+                        (project-root (project-current)))))
+    (if project-root
+        (let ((file (read-file-name "Choose file: " project-root)))
+          (when file
+            (let ((relative-path (file-relative-name file project-root)))
+              (insert relative-path))))
+      ;; Fallback to regular find-file if no project
+      (let ((file (read-file-name "Choose file: ")))
+        (when file
+          (insert (file-name-nondirectory file)))))))
+
+(defun claude-code--handle-at-key ()
+  "Handle @ key press - insert @ and prompt for file if not escaped."
+  (interactive)
+  (let ((preceding-char (char-before)))
+    (if (eq preceding-char ?\\)
+        ;; If preceded by backslash, just insert @
+        (insert "@")
+      ;; Otherwise, insert @ and prompt for file
+      (insert "@")
+      (claude-code--insert-file-at-point))))
+
 ;;;###autoload
 (defun claude-code-show-prompt-buffer ()
-  "Show the prompt buffer for composing Claude commands."
+  "Show the prompt buffer for composing Claude commands.
+
+The prompt buffer supports:
+- File insertion: Type @ to open project-find-file and insert selected file
+- Literal @: Type \\@ to insert @ without file selection
+- Key bindings: C-c C-c to send, C-c C-k to close
+- Truncate lines enabled by default
+- Automatic Claude startup if not running"
   (interactive)
   ;; Start Claude if not running
   (unless (claude-code--find-all-claude-buffers)
     (claude-code))
   (let ((buffer (claude-code--get-prompt-buffer)))
-    (pop-to-buffer buffer '((display-buffer-below-selected)))))
+    (pop-to-buffer buffer '((display-buffer-below-selected)))
+    (message "Prompt buffer ready. Type @ to select files, \\@ for literal @. C-c C-c to send, C-c C-k to close.")))
 
 ;;;###autoload
 (defun claude-code-send-prompt ()
