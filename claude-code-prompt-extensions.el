@@ -35,8 +35,14 @@ This mode provides:
 \\{claude-code-prompt-mode-map}"
   :group 'claude-code-extensions
   
-  ;; Enable truncate lines by default
+  ;; Always enable truncate lines (never toggle, always on)
   (setq truncate-lines t)
+  (add-hook 'post-command-hook 
+            (lambda () 
+              (when (eq major-mode 'claude-code-prompt-mode)
+                (when truncate-lines
+                  (setq truncate-lines nil))))
+            nil t)
   
   ;; Fix window height to prevent zoom-mode interference
   (setq window-size-fixed 'height)
@@ -44,6 +50,7 @@ This mode provides:
   ;; Set up key bindings
   (local-set-key (kbd "C-c C-c") 'claude-code-send-prompt)
   (local-set-key (kbd "C-c C-k") 'claude-code--close-prompt-buffer)
+  (local-set-key (kbd "s-<return>") 'claude-code-send-prompt)
   (local-set-key (kbd "@") 'claude-code--handle-at-key)
   
   ;; Add some basic font-lock for file paths
@@ -74,14 +81,14 @@ This mode provides:
         
         ;; Force Claude to side window on right
         (display-buffer claude-buffer '((display-buffer-in-side-window)
-                                       (side . right)
-                                       (window-width . 90)))
+                                        (side . right)
+                                        (window-width . 90)))
         
         ;; Force prompt buffer to side window below Claude
         (display-buffer prompt-buffer '((display-buffer-in-side-window)
-                                       (side . right)
-                                       (slot . 1)
-                                       (window-height . 0.15)))))))
+                                        (side . right)
+                                        (slot . 1)
+                                        (window-height . 0.15)))))))
 
 (defun claude-code-prompt-extensions--auto-show-related-windows ()
   "Automatically show prompt buffer when Claude buffer is shown, and vice versa."
@@ -105,8 +112,8 @@ This mode provides:
                 (delete-window window))))
           ;; Force Claude buffer to side window on right
           (display-buffer claude-buffer '((display-buffer-in-side-window)
-                                         (side . right)
-                                         (window-width . 90)))
+                                          (side . right)
+                                          (window-width . 90)))
           ;; Force prompt buffer to side window below Claude
           (display-buffer prompt-buffer '((display-buffer-in-side-window)
                                           (side . right)
@@ -130,9 +137,9 @@ This mode provides:
               (when (window-live-p window)
                 (delete-window window))))
           (display-buffer prompt-buffer '((display-buffer-in-side-window)
-                                         (side . right)
-                                         (slot . 1)
-                                         (window-height . 0.15))))))))
+                                          (side . right)
+                                          (slot . 1)
+                                          (window-height . 0.15))))))))
 
 ;;;; Window management hooks
 (defun claude-code-prompt-extensions--close-related-windows (window)
@@ -255,7 +262,7 @@ This mode provides:
                         ;; Avoid recursion by using run-with-timer with window validation
                         (run-with-timer 0.01 nil (lambda () 
                                                    (when (and (window-live-p win)
-                                                             (window-valid-p win))
+                                                              (window-valid-p win))
                                                      (delete-window win)))))))
                   
                   ;; If deleting prompt window, close all Claude code windows  
@@ -269,7 +276,7 @@ This mode provides:
                                    (not (eq claude-window target-window)))
                           (run-with-timer 0.01 nil (lambda () 
                                                      (when (and (window-live-p claude-window)
-                                                               (window-valid-p claude-window))
+                                                                (window-valid-p claude-window))
                                                        (delete-window claude-window)))))))))))
   
   ;; Add advice on quit-window which is often used to close side windows
@@ -298,8 +305,8 @@ This mode provides:
   (advice-add 'claude-code :after
               (lambda (&rest args)
                 (run-with-timer 0.5 nil 
-                               (lambda ()
-                                 (claude-code-prompt-extensions--force-side-window-arrangement))))))
+                                (lambda ()
+                                  (claude-code-prompt-extensions--force-side-window-arrangement))))))
 
 ;;;; Prompt buffer functionality
 (defun claude-code--prompt-buffer-name ()
@@ -470,9 +477,13 @@ The prompt buffer supports:
             (when-let ((new-prompt-window (get-buffer-window prompt-buffer)))
               (select-window new-prompt-window)))))
       
-      ;; Ensure truncate lines is enabled
+      ;; Always ensure truncate lines is enabled and stays enabled
       (with-current-buffer prompt-buffer
         (setq truncate-lines t)
+        ;; Force truncate-lines to stay on with buffer-local hook
+        (add-hook 'post-command-hook 
+                  (lambda () (unless truncate-lines (setq truncate-lines t)))
+                  nil t)
         (goto-char (point-max)))
       
       ;; Force correct window size for prompt buffer (15% of frame height)
@@ -492,21 +503,9 @@ The prompt buffer supports:
       ;; Wait a bit before re-enabling zoom mode to ensure sizes are set
       (sit-for 0.1))
     
-    ;; Re-enable zoom mode if it was active, but keep it disabled while Claude buffers are visible
-    (when zoom-mode-was-active
-      (run-with-timer 0.5 nil (lambda () 
-                                ;; Only clear flag and re-enable if no Claude buffers are visible
-                                (unless (cl-some (lambda (window)
-                                                   (with-current-buffer (window-buffer window)
-                                                     (or (eq major-mode 'claude-code-prompt-mode)
-                                                         (string-match-p "^\\*claude" (buffer-name)))))
-                                                 (window-list))
-                                  (setq claude-code-prompt-extensions--zoom-disabled nil))
-                                (zoom-mode 1))))
-    ;; If not re-enabling zoom mode, don't clear the flag - let it stay disabled while Claude buffers are visible
-    (unless zoom-mode-was-active
-      ;; Don't clear the flag immediately - let the predicate handle it based on visible buffers
-      nil)))
+    ;; Don't re-enable zoom mode automatically - let the predicate handle it
+    ;; The predicate will check if Claude buffers are visible and act accordingly
+    nil))
 
 ;;;###autoload
 (defun claude-code-send-prompt ()
@@ -527,6 +526,8 @@ After sending, clear the prompt buffer, close it, and show the Claude buffer."
             (with-current-buffer claude-buffer
               (claude-code--term-send-string claude-code-terminal-backend content)
               (claude-code--term-send-string claude-code-terminal-backend (kbd "RET")))
+            ;; Always call claude-code-send-return after sending prompt
+            (claude-code-send-return)
             ;; Focus Claude buffer after sending, but keep prompt buffer open
             (when-let* ((claude-window (get-buffer-window claude-buffer)))
               (select-window claude-window))))))
@@ -550,40 +551,27 @@ With prefix ARG, switch to the Claude buffer after sending."
                             (file-relative-name file-name project-root)
                           file-name)))
     (if relative-path
-        (if (not (claude-code--prompt-buffer-empty-p))
-            ;; Send to prompt buffer
-            (let ((prompt-buffer (claude-code--get-prompt-buffer)))
-              (with-current-buffer prompt-buffer
-                (goto-char (point-max))
-                (when (and (> (point) (point-min))
-                           (not (bolp)))
-                  (insert " "))
-                (insert (format "@%s " relative-path))))
-          ;; Send to Claude buffer
-          (if-let* ((claude-code-buffer (claude-code--get-or-prompt-for-buffer)))
-              (progn
-                (with-current-buffer claude-code-buffer
-                  ;; Check if current input line ends with space
-                  (let* ((current-line (buffer-substring-no-properties
-                                        (line-beginning-position) (point)))
-                         (needs-prefix-space (not (string-match-p "\\s-$" current-line)))
-                         (command (if needs-prefix-space
-                                      (format " @%s " relative-path)
-                                    (format "@%s " relative-path))))
-                    (claude-code--term-send-string claude-code-terminal-backend command))
-                  (display-buffer claude-code-buffer))
-                (when arg
-                  (pop-to-buffer claude-code-buffer)))
-            (claude-code--show-not-running-message)))
+        ;; Always send to prompt buffer
+        (let ((prompt-buffer (claude-code--get-prompt-buffer)))
+          (with-current-buffer prompt-buffer
+            (goto-char (point-max))
+            (when (and (> (point) (point-min))
+                       (not (bolp)))
+              (insert " "))
+            (insert (format "@%s " relative-path)))
+          ;; Show prompt buffer if not visible
+          (unless (get-buffer-window prompt-buffer)
+            (claude-code-show-prompt-buffer))
+          (message "Added @%s to prompt buffer" relative-path))
       (message "No file associated with current buffer"))))
 
 ;;;###autoload
 (defun claude-code-send-file (&optional arg)
-  "Prompt for a file and send its path to Claude with @ prefix.
+  "Prompt for a file and send its path to prompt buffer with @ prefix.
 
 Uses completion to select a file from the project or current directory,
-then sends it to Claude with @ prefix for file operations.
-If prompt buffer is not empty, sends to prompt buffer instead.
+then sends it to the prompt buffer with @ prefix for file operations.
+Always sends to prompt buffer.
 
 With prefix ARG, switch to the Claude buffer after sending."
   (interactive "P")
@@ -595,39 +583,18 @@ With prefix ARG, switch to the Claude buffer after sending."
                             (file-relative-name file-path project-root)
                           file-path)))
     (when file-path
-      (if (not (claude-code--prompt-buffer-empty-p))
-          ;; Send to prompt buffer
-          (let ((prompt-buffer (claude-code--get-prompt-buffer)))
-            (with-current-buffer prompt-buffer
-              (goto-char (point-max))
-              (when (and (> (point) (point-min))
-                         (not (bolp)))
-                (insert " "))
-              (insert (format "@%s " relative-path))
-              (goto-char (point-max)))
-            ;; Temporarily switch to prompt buffer to set cursor position, then return
-            (let ((original-buffer (current-buffer)))
-              (switch-to-buffer prompt-buffer)
-              (goto-char (point-max))
-              (switch-to-buffer original-buffer))
-            ;; Show quick feedback that file was added
-            (message "Added @%s to prompt buffer" relative-path))
-        ;; Send to Claude buffer
-        (if-let* ((claude-code-buffer (claude-code--get-or-prompt-for-buffeikjir)))
-            (progn
-              (with-current-buffer claude-code-buffer
-                ;; Check if current input line ends with space
-                (let* ((current-line (buffer-substring-no-properties
-                                      (line-beginning-position) (point)))
-                       (needs-prefix-space (not (string-match-p "\\s-$" current-line)))
-                       (command (if needs-prefix-space
-                                    (format " @%s " relative-path)
-                                  (format "@%s " relative-path))))
-                  (claude-code--term-send-string claude-code-terminal-backend command))
-                (display-buffer claude-code-buffer))
-              (when arg
-                (pop-to-buffer claude-code-buffer)))
-          (claude-code--show-not-running-message))))))
+      ;; Always send to prompt buffer
+      (let ((prompt-buffer (claude-code--get-prompt-buffer)))
+        (with-current-buffer prompt-buffer
+          (goto-char (point-max))
+          (when (and (> (point) (point-min))
+                     (not (bolp)))
+            (insert " "))
+          (insert (format "@%s " relative-path)))
+        ;; Show prompt buffer if not visible
+        (unless (get-buffer-window prompt-buffer)
+          (claude-code-show-prompt-buffer))
+        (message "Added @%s to prompt buffer" relative-path)))))
 
 ;;;; Key bindings integration
 ;;;###autoload
@@ -670,39 +637,24 @@ This should be called after claude-code is loaded."
 (defvar claude-code-prompt-extensions--zoom-disabled nil
   "Flag to track if we've temporarily disabled zoom mode.")
 
-(defun claude-code-prompt-extensions--check-and-clear-zoom-flag ()
-  "Check if Claude buffers are still visible and clear zoom flag if not."
-  (when claude-code-prompt-extensions--zoom-disabled
-    (unless (cl-some (lambda (window)
-                       (with-current-buffer (window-buffer window)
-                         (or (eq major-mode 'claude-code-prompt-mode)
-                             (string-match-p "^\\*claude" (buffer-name)))))
-                     (window-list))
-      (setq claude-code-prompt-extensions--zoom-disabled nil))))
 
 (defun claude-code-prompt-extensions--zoom-ignore-p ()
   "Predicate function for zoom-mode to ignore Claude prompt buffers."
-  ;; Auto-clear the flag if no Claude buffers are visible
-  (claude-code-prompt-extensions--check-and-clear-zoom-flag)
-  (or 
-   ;; Always ignore when we've flagged zoom as disabled
-   claude-code-prompt-extensions--zoom-disabled
-   ;; Ignore if current buffer is a Claude prompt buffer
-   (eq major-mode 'claude-code-prompt-mode)
-   ;; Ignore if buffer name starts with *claude-prompt:
-   (string-match-p "^\\*claude-prompt:" (buffer-name))
-   ;; Ignore if buffer name starts with *claude-code
-   (string-match-p "^\\*claude-code" (buffer-name))
-   ;; Ignore if any visible window contains a Claude prompt buffer
-   (cl-some (lambda (window)
-              (with-current-buffer (window-buffer window)
-                (eq major-mode 'claude-code-prompt-mode)))
-            (window-list))
-   ;; Ignore if any visible window contains a Claude code buffer
-   (cl-some (lambda (window)
-              (with-current-buffer (window-buffer window)
-                (string-match-p "^\\*claude-code" (buffer-name))))
-            (window-list))))
+  ;; Always check if Claude buffers are visible and return true if they are
+  ;; This ensures zoom mode stays disabled as long as any Claude buffer is visible
+  (let ((claude-buffers-visible 
+         (cl-some (lambda (window)
+                    (let ((buffer (window-buffer window)))
+                      (with-current-buffer buffer
+                        (or (eq major-mode 'claude-code-prompt-mode)
+                            (string-match-p "^\\*claude:" (buffer-name))
+                            (string-match-p "^\\*claude-prompt:" (buffer-name))
+                            (string-match-p "^\\*claude-code" (buffer-name))))))
+                  (window-list))))
+    ;; Update our internal flag based on visibility - this ensures consistency
+    (setq claude-code-prompt-extensions--zoom-disabled claude-buffers-visible)
+    ;; Return true to ignore zoom if any Claude buffers are visible
+    claude-buffers-visible))
 
 ;;;###autoload
 (defun claude-code-prompt-extensions-setup-zoom-integration ()
