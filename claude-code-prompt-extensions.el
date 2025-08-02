@@ -525,9 +525,12 @@ After sending, clear the prompt buffer, close it, and show the Claude buffer."
             ;; Send to the correct Claude buffer for this project
             (with-current-buffer claude-buffer
               (claude-code--term-send-string claude-code-terminal-backend content)
-              (claude-code--term-send-string claude-code-terminal-backend (kbd "RET")))
+              ;; Add delay before sending Enter to avoid terminal buffering issues
+              (run-with-timer 0.1 nil 
+                (lambda ()
+                  (claude-code--term-send-string claude-code-terminal-backend (kbd "RET")))))
             ;; Always call claude-code-send-return after sending prompt
-            (claude-code-send-return)
+            (run-with-timer 0.2 nil #'claude-code-send-return)
             ;; Focus Claude buffer after sending, but keep prompt buffer open
             (when-let* ((claude-window (get-buffer-window claude-buffer)))
               (select-window claude-window))))))
